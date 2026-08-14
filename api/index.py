@@ -10,66 +10,65 @@ TIEMPO_RETIENE_CACHE = 30
 
 class handler(BaseHTTPRequestHandler):
 
-    def consultar_dolar_api(self):
+    def consultar_precios(self):
         global CACHE_DATOS, ULTIMA_PETICION_TIME
         
         tiempo_actual = time.time()
         segundos_transcurridos = tiempo_actual - ULTIMA_PETICION_TIME
 
-        # 1. Si pasaron menos de 30 segundos, entregamos la caché
+        # 1. Si pasaron menos de 30s, devolvemos lo guardado
         if CACHE_DATOS is not None and segundos_transcurridos < TIEMPO_RETIENE_CACHE:
-            return CACHE_DATOS, f"Caché (restan {int(TIEMPO_RETIENE_CACHE - segundos_transcurridos)}s)"
+            return CACHE_DATOS, f"Cache (restan {int(TIEMPO_RETIENE_CACHE - segundos_transcurridos)}s)"
 
-        # 2. Consultamos DolarApi Venezuela
-        url_bcv = "https://ve.dolarapi.com/v1/dolares/oficial"
-        url_usdt = "https://ve.dolarapi.com/v1/dolares/paralelo"
-        
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
             "Accept": "application/json"
         }
 
+        precio_bcv = CACHE_DATOS["bcv"] if CACHE_DATOS else "0.00"
+        precio_usdt = CACHE_DATOS["usdt"] if CACHE_DATOS else "0.00"
+
+        # 2. Consultar BCV Oficial desde DolarApi
         try:
-            # Obtener BCV
+            url_bcv = "https://ve.dolarapi.com/v1/dolares/oficial"
             req_bcv = urllib.request.Request(url_bcv, headers=headers, method='GET')
             with urllib.request.urlopen(req_bcv, timeout=6) as res_bcv:
                 data_bcv = json.loads(res_bcv.read().decode('utf-8'))
                 precio_bcv = f"{float(data_bcv['promedio']):.2f}"
+        except Exception:
+            pass # Si falla DolarApi, mantiene el último BCV de la caché
 
-            # Obtener Paralelo / USDT
+        # 3. Consultar USDT Binance P2P desde CriptoYa
+        try:
+            url_usdt = "https://criptoya.com/api/binancep2p/USDT/VES/1"
             req_usdt = urllib.request.Request(url_usdt, headers=headers, method='GET')
             with urllib.request.urlopen(req_usdt, timeout=6) as res_usdt:
                 data_usdt = json.loads(res_usdt.read().decode('utf-8'))
-                precio_usdt = f"{float(data_usdt['promedio']):.2f}"
+                if "ask" in data_usdt:
+                    precio_usdt = f"{float(data_usdt['ask']):.2f}"
+        except Exception:
+            pass # Si falla CriptoYa, mantiene el último USDT de la caché
 
-            # Construimos el objeto resultante
-            resultado = {
-                "bcv": precio_bcv,
-                "usdt": precio_usdt
-            }
+        resultado = {
+            "bcv": precio_bcv,
+            "usdt": precio_usdt
+        }
 
-            CACHE_DATOS = resultado
-            ULTIMA_PETICION_TIME = tiempo_actual
+        # Actualizamos la caché global
+        CACHE_DATOS = resultado
+        ULTIMA_PETICION_TIME = tiempo_actual
 
-            return resultado, "DolarApi Live"
-
-        except Exception as e:
-            # Si hay fallo puntual, devolvemos la última caché si existe
-            if CACHE_DATOS:
-                return CACHE_DATOS, "Caché Fallback"
-            
-            return {"bcv": "0.00", "usdt": "0.00"}, "Error_Conexion"
+        return resultado, "Live Data"
 
     def do_GET(self):
-        datos_precios, fuente = self.consultar_dolar_api()
+        datos_precios, fuente = self.consultar_precios()
 
         respuesta = {
             "moneda": "USD / VES",
-            "origen": "DolarApi Venezuela",
             "bcv": datos_precios["bcv"],
             "usdt": datos_precios["usdt"],
             "fuente": fuente,
-            "status": "online" if fuente != "Error_Conexion" else "offline"
+            "status": "online" if datos_precios["bcv"] != "0.00" else "offline"
         }
 
         self.send_response(200)
