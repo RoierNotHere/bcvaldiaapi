@@ -3,25 +3,26 @@ import json
 import urllib.request
 import time
 
-# --- VARIABLES GLOBALES PARA LA CACHÉ ---
-PRECIO_EN_CACHE = None
+# --- CACHÉ EN MEMORIA (30 SEGUNDOS) ---
+CACHE_DATOS = None
 ULTIMA_PETICION_TIME = 0
-TIEMPO_RETIENE_CACHE = 30  # Protege el límite de CriptoYa (30 segundos entre llamadas reales)
+TIEMPO_RETIENE_CACHE = 30 
 
 class handler(BaseHTTPRequestHandler):
 
-    def consultar_criptoya(self):
-        global PRECIO_EN_CACHE, ULTIMA_PETICION_TIME
+    def consultar_dolar_api(self):
+        global CACHE_DATOS, ULTIMA_PETICION_TIME
         
         tiempo_actual = time.time()
         segundos_transcurridos = tiempo_actual - ULTIMA_PETICION_TIME
 
-        # 1. SI HAN PASADO MENOS DE 30s, DEVOLVEMOS EL DATO GUARDADO
-        if PRECIO_EN_CACHE is not None and segundos_transcurridos < TIEMPO_RETIENE_CACHE:
-            return PRECIO_EN_CACHE, f"Cache (espera {int(TIEMPO_RETIENE_CACHE - segundos_transcurridos)}s)"
+        # 1. Si pasaron menos de 30 segundos, entregamos la caché
+        if CACHE_DATOS is not None and segundos_transcurridos < TIEMPO_RETIENE_CACHE:
+            return CACHE_DATOS, f"Caché (restan {int(TIEMPO_RETIENE_CACHE - segundos_transcurridos)}s)"
 
-        # 2. SI YA PASARON LOS 30s, HACEMOS LA CONSULTA REAL A CRIPTOYA
-        url = "https://criptoya.com/api/binancep2p/USDT/VES/1"
+        # 2. Consultamos DolarApi Venezuela
+        url_bcv = "https://ve.dolarapi.com/v1/dolares/oficial"
+        url_usdt = "https://ve.dolarapi.com/v1/dolares/paralelo"
         
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
@@ -29,46 +30,50 @@ class handler(BaseHTTPRequestHandler):
         }
 
         try:
-            req = urllib.request.Request(url, headers=headers, method='GET')
-            
-            with urllib.request.urlopen(req, timeout=8) as response:
-                if response.status == 200:
-                    data = json.loads(response.read().decode('utf-8'))
-                    precio_ask = data.get("ask")
-                    
-                    if precio_ask:
-                        # Guardamos el nuevo precio y reseteamos el reloj
-                        precio_final = f"{float(precio_ask):.2f}"
-                        PRECIO_EN_CACHE = precio_final
-                        ULTIMA_PETICION_TIME = tiempo_actual
-                        
-                        return precio_final, "CriptoYa Live"
-            
-            # Si falla CriptoYa pero teníamos algo guardado, entregamos lo viejo
-            if PRECIO_EN_CACHE:
-                return PRECIO_EN_CACHE, "Cache Fallback"
-                
-            return "Dato_No_Encontrado", "Error"
+            # Obtener BCV
+            req_bcv = urllib.request.Request(url_bcv, headers=headers, method='GET')
+            with urllib.request.urlopen(req_bcv, timeout=6) as res_bcv:
+                data_bcv = json.loads(res_bcv.read().decode('utf-8'))
+                precio_bcv = f"{float(data_bcv['promedio']):.2f}"
+
+            # Obtener Paralelo / USDT
+            req_usdt = urllib.request.Request(url_usdt, headers=headers, method='GET')
+            with urllib.request.urlopen(req_usdt, timeout=6) as res_usdt:
+                data_usdt = json.loads(res_usdt.read().decode('utf-8'))
+                precio_usdt = f"{float(data_usdt['promedio']):.2f}"
+
+            # Construimos el objeto resultante
+            resultado = {
+                "bcv": precio_bcv,
+                "usdt": precio_usdt
+            }
+
+            CACHE_DATOS = resultado
+            ULTIMA_PETICION_TIME = tiempo_actual
+
+            return resultado, "DolarApi Live"
 
         except Exception as e:
-            if PRECIO_EN_CACHE:
-                return PRECIO_EN_CACHE, "Cache Fallback Exception"
-            return "Error_Conexion", "Error"
+            # Si hay fallo puntual, devolvemos la última caché si existe
+            if CACHE_DATOS:
+                return CACHE_DATOS, "Caché Fallback"
+            
+            return {"bcv": "0.00", "usdt": "0.00"}, "Error_Conexion"
 
     def do_GET(self):
-        precio, fuente = self.consultar_criptoya()
+        datos_precios, fuente = self.consultar_dolar_api()
 
-        datos = {
-            "moneda": "USDT",
-            "par": "VES",
-            "origen": "Binance P2P (vía CriptoYa)",
-            "precio": precio,
+        respuesta = {
+            "moneda": "USD / VES",
+            "origen": "DolarApi Venezuela",
+            "bcv": datos_precios["bcv"],
+            "usdt": datos_precios["usdt"],
             "fuente": fuente,
-            "status": "online" if "Error" not in precio and "Dato" not in precio else "offline"
+            "status": "online" if fuente != "Error_Conexion" else "offline"
         }
 
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
-        self.wfile.write(json.dumps(datos).encode('utf-8'))
+        self.wfile.write(json.dumps(respuesta).encode('utf-8'))
