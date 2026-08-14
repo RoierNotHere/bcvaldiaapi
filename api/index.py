@@ -4,9 +4,9 @@ import json
 
 class handler(BaseHTTPRequestHandler):
 
-    def obtener_dolar_bcv(self):
-        # Endpoint directo que trae la tasa oficial del BCV sin bloqueos de IP
-        url = "https://criptoya.com/api/bcv"
+    def obtener_p2p_binance(self):
+        # Endpoint de CriptoYa para Binance P2P USDT/VES
+        url = "https://criptoya.com/api/binancep2p/USDT/VES/1"
         
         scraper = cloudscraper.create_scraper()
         
@@ -15,10 +15,11 @@ class handler(BaseHTTPRequestHandler):
             
             if res.status_code == 200:
                 data = res.json()
-                # Criptoya devuelve el valor del dólar BCV directo en un campo float/number
-                precio = data.get("usd") or data.get("price")
-                if precio:
-                    return f"{float(precio):.2f}"
+                # 'ask' representa la mejor oferta de venta en P2P
+                precio_ask = data.get("ask")
+                
+                if precio_ask:
+                    return f"{float(precio_ask):.2f}"
                 
                 return "Dato_No_Encontrado"
             
@@ -28,13 +29,14 @@ class handler(BaseHTTPRequestHandler):
             return "Error_Conexion"
 
     def do_GET(self):
-        dolar_precio = self.obtener_dolar_bcv()
+        precio_usdt = self.obtener_p2p_binance()
 
         datos = {
-            "moneda": "USD",
-            "origen": "Banco Central de Venezuela",
-            "precio": dolar_precio,
-            "status": "online" if "Error" not in dolar_precio and "Dato" not in dolar_precio else "offline"
+            "moneda": "USDT",
+            "par": "VES",
+            "origen": "Binance P2P (vía CriptoYa)",
+            "precio": precio_usdt,
+            "status": "online" if "Error" not in precio_usdt and "Dato" not in precio_usdt else "offline"
         }
 
         self.send_response(200)
