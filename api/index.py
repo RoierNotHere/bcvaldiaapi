@@ -4,15 +4,12 @@ from bs4 import BeautifulSoup
 import json
 import random
 import time
-import urllib3
-
-# Desactivamos advertencias de certificados viejos del BCV
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class handler(BaseHTTPRequestHandler):
 
     def obtener_dolar_bcv(self):
-        url = "https://www.bcv.org.ve/"
+        # Usamos una fuente espejo confiable que replica la tasa del BCV sin geobloqueo
+        url = "https://monitordolarvenezuela.com/"
         
         scraper = cloudscraper.create_scraper(
             browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False}
@@ -26,20 +23,28 @@ class handler(BaseHTTPRequestHandler):
             }
             
             time.sleep(random.uniform(1.0, 2.0))
-            
-            # verify=False por los certificados del sitio del BCV
-            res = scraper.get(url, headers=headers, timeout=15, verify=False)
+            res = scraper.get(url, headers=headers, timeout=15)
             
             if res.status_code == 200:
                 soup = BeautifulSoup(res.text, "html.parser")
                 
-                # Buscamos la etiqueta <strong class="strong-tb"> dentro del div id="dolar"
-                dolar_box = soup.find("div", {"id": "dolar"})
-                if dolar_box:
-                    tag = dolar_box.find("strong", {"class": "strong-tb"})
-                    if tag:
-                        precio_raw = tag.get_text(strip=True)
-                        precio_limpio = precio_raw.replace(',', '.')
+                # Buscamos la casilla del BCV en la plataforma
+                # Monitor Dolar suele marcar la tasa oficial en contenedores específicos
+                box = soup.find("div", {"id": "bcv"}) or soup.find("div", class_="bcv")
+                
+                if not box:
+                    # Búsqueda alternativa por texto en la página
+                    for card in soup.find_all("div"):
+                        if "BCV" in card.get_text():
+                            box = card
+                            break
+
+                if box:
+                    # Buscamos la etiqueta del precio dentro de la casilla
+                    precio_tag = box.find("h3") or box.find("p") or box.find("span", class_="precio")
+                    if precio_tag:
+                        precio_raw = precio_tag.get_text(strip=True).replace('Bs.', '').replace('Bs', '').strip()
+                        precio_limpio = precio_raw.replace('.', '').replace(',', '.')
                         precio_float = round(float(precio_limpio), 2)
                         return f"{precio_float:.2f}"
                 
@@ -55,7 +60,7 @@ class handler(BaseHTTPRequestHandler):
 
         datos = {
             "moneda": "USD",
-            "origen": "Banco Central de Venezuela",
+            "origen": "Banco Central de Venezuela (vía Espejo)",
             "precio": dolar_precio,
             "status": "online" if "Error" not in dolar_precio else "offline"
         }
