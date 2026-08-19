@@ -31,9 +31,6 @@ class handler(BaseHTTPRequestHandler):
         
         binance_c = float(CACHE_DATOS["binance_p2p"]["usdt_compra"]) if CACHE_DATOS else 0.0
         binance_v = float(CACHE_DATOS["binance_p2p"]["usdt_venta"]) if CACHE_DATOS else 0.0
-        
-        dolarvzla_c = float(CACHE_DATOS["dolarvzla"]["usdt_compra"]) if CACHE_DATOS else 0.0
-        dolarvzla_v = float(CACHE_DATOS["dolarvzla"]["usdt_venta"]) if CACHE_DATOS else 0.0
 
         # 2. Consultar BCV USD y EURO desde DolarApi
         try:
@@ -60,23 +57,10 @@ class handler(BaseHTTPRequestHandler):
         except Exception:
             pass
 
-        # 4. Consultar DolarVzla (Ratio USDT a VES)
-        try:
-            url_dvzla = "https://api.dolarvzla.com/public/usdt/exchange-rate"
-            req_dvzla = urllib.request.Request(url_dvzla, headers=headers, method='GET')
-            with urllib.request.urlopen(req_dvzla, timeout=6) as res_dvzla:
-                data_dvzla = json.loads(res_dvzla.read().decode('utf-8'))
-                datos_rate = data_dvzla.get("current", data_dvzla)
-                dolarvzla_c = float(datos_rate.get("buy", datos_rate.get("bid", 0.0)))
-                dolarvzla_v = float(datos_rate.get("sell", datos_rate.get("ask", 0.0)))
-        except Exception:
-            pass
-
         # --- CÁLCULOS MATEMÁTICOS ---
         promedio_binance = (binance_c + binance_v) / 2 if (binance_c and binance_v) else 0.0
         diferencia_absoluta = promedio_binance - bcv_usd if (promedio_binance and bcv_usd) else 0.0
         diferencia_porcentual = (diferencia_absoluta / bcv_usd * 100) if bcv_usd else 0.0
-        promedio_dolarvzla = (dolarvzla_c + dolarvzla_v) / 2 if (dolarvzla_c and dolarvzla_v) else 0.0
 
         resultado = {
             "bcv": {
@@ -91,11 +75,6 @@ class handler(BaseHTTPRequestHandler):
             "brecha_binance_bcv": {
                 "diferencia_absoluta": f"{diferencia_absoluta:.2f}",
                 "diferencia_porcentual": f"{diferencia_porcentual:.2f}%"
-            },
-            "dolarvzla": {
-                "usdt_compra": f"{dolarvzla_c:.2f}",
-                "usdt_venta": f"{dolarvzla_v:.2f}",
-                "usdt_promedio": f"{promedio_dolarvzla:.2f}"
             }
         }
 
