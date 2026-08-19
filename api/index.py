@@ -51,7 +51,7 @@ class handler(BaseHTTPRequestHandler):
 
         # 3. Consultar Binance P2P desde CriptoYa (totalAsk = Venta, totalBid = Compra)
         try:
-            url_criptoya = "https://criptoya.com/api/saldo/USDT/VES/1"
+            url_criptoya = "curl https://criptoya.com/api/binancep2p/USDT/VES/1"
             req_criptoya = urllib.request.Request(url_criptoya, headers=headers, method='GET')
             with urllib.request.urlopen(req_criptoya, timeout=6) as res_criptoya:
                 data_criptoya = json.loads(res_criptoya.read().decode('utf-8'))
