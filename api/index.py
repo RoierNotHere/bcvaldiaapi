@@ -49,14 +49,14 @@ class handler(BaseHTTPRequestHandler):
         except Exception:
             pass
 
-        # 3. Consultar Binance P2P desde CriptoYa (totalAsk = Venta, totalBid = Compra)
+        # 3. Consultar Binance P2P directamente desde CriptoYa (bid = Compra, ask = Venta)
         try:
-            url_criptoya = "curl https://criptoya.com/api/binancep2p/USDT/VES/1"
-            req_criptoya = urllib.request.Request(url_criptoya, headers=headers, method='GET')
-            with urllib.request.urlopen(req_criptoya, timeout=6) as res_criptoya:
-                data_criptoya = json.loads(res_criptoya.read().decode('utf-8'))
-                binance_c = float(data_criptoya.get("totalBid", 0.0))  # Compra
-                binance_v = float(data_criptoya.get("totalAsk", 0.0))  # Venta
+            url_binance = "https://criptoya.com/api/binancep2p/USDT/VES/1"
+            req_binance = urllib.request.Request(url_binance, headers=headers, method='GET')
+            with urllib.request.urlopen(req_binance, timeout=6) as res_binance:
+                data_binance = json.loads(res_binance.read().decode('utf-8'))
+                binance_c = float(data_binance.get("bid", 0.0))  # Precio de compra
+                binance_v = float(data_binance.get("ask", 0.0))  # Precio de venta
         except Exception:
             pass
 
@@ -66,15 +66,13 @@ class handler(BaseHTTPRequestHandler):
             req_dvzla = urllib.request.Request(url_dvzla, headers=headers, method='GET')
             with urllib.request.urlopen(req_dvzla, timeout=6) as res_dvzla:
                 data_dvzla = json.loads(res_dvzla.read().decode('utf-8'))
-                
-                # Manejo de respuesta directo o anidado en 'current'
                 datos_rate = data_dvzla.get("current", data_dvzla)
                 dolarvzla_c = float(datos_rate.get("buy", datos_rate.get("bid", 0.0)))
                 dolarvzla_v = float(datos_rate.get("sell", datos_rate.get("ask", 0.0)))
         except Exception:
             pass
 
-        # --- CÁLCULOS MATEMÁTICOS Y MATRICES ---
+        # --- CÁLCULOS MATEMÁTICOS ---
         promedio_binance = (binance_c + binance_v) / 2 if (binance_c and binance_v) else 0.0
         diferencia_absoluta = promedio_binance - bcv_usd if (promedio_binance and bcv_usd) else 0.0
         diferencia_porcentual = (diferencia_absoluta / bcv_usd * 100) if bcv_usd else 0.0
